@@ -64,29 +64,34 @@ class ImageProcessorApp:
 
     def setup_ui(self):
         """Set up the main UI layout."""
-        # Main container
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky="nsew")
-
+        # Root layout: content area (row 0, weight=1) + export buttons (row 1, weight=0)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(1, weight=1)
+        self.root.rowconfigure(1, weight=0)
+
+        # Content frame (controls + preview)
+        content_frame = ttk.Frame(self.root, padding="10")
+        content_frame.grid(row=0, column=0, sticky="nsew")
+        content_frame.columnconfigure(1, weight=1)
+        content_frame.rowconfigure(0, weight=1)
 
         # Left panel - Controls
-        self.setup_controls_panel(main_frame)
+        self.setup_controls_panel(content_frame)
 
         # Right panel - Preview
-        self.setup_preview_panel(main_frame)
+        self.setup_preview_panel(content_frame)
 
-        # Bottom panel - Export buttons
-        self.setup_export_panel(main_frame)
+        # Bottom panel - Export buttons (directly on root, always visible)
+        self.setup_export_panel(self.root)
+
+        # Force initial layout update to prevent blank UI on startup
+        self.root.update_idletasks()
 
     def setup_controls_panel(self, parent):
         """Set up the controls panel on the left side."""
         # Create a container frame for the controls and scrollbar
         controls_container = ttk.Frame(parent, width=320)
-        controls_container.grid(row=0, column=0, rowspan=2, sticky="ns", padx=(0, 10))
+        controls_container.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         controls_container.grid_propagate(False)  # Prevent container from shrinking
         controls_container.rowconfigure(0, weight=1)
         controls_container.columnconfigure(0, weight=1)
@@ -103,13 +108,16 @@ class ImageProcessorApp:
         controls_frame = ttk.LabelFrame(controls_canvas, text="Controls", padding="10")
         canvas_window = controls_canvas.create_window((0, 0), window=controls_frame, anchor="nw")
 
-        # Update canvas width when the controls frame changes size
+        # Update canvas scroll region when the controls frame changes size
         def on_frame_configure(event):
             controls_canvas.configure(scrollregion=controls_canvas.bbox("all"))
-            # Make canvas window width match canvas width
-            controls_canvas.itemconfig(canvas_window, width=controls_canvas.winfo_width())
+
+        # Update canvas window width when canvas is resized
+        def on_canvas_configure(event):
+            controls_canvas.itemconfig(canvas_window, width=event.width)
 
         controls_frame.bind("<Configure>", on_frame_configure)
+        controls_canvas.bind("<Configure>", on_canvas_configure)
 
         # File selection
         ttk.Label(controls_frame, text="Image File:").grid(row=0, column=0, sticky="w", pady=(0, 5))
@@ -286,7 +294,7 @@ class ImageProcessorApp:
     def setup_preview_panel(self, parent):
         """Set up the preview panel on the right side."""
         preview_frame = ttk.LabelFrame(parent, text="Preview", padding="10")
-        preview_frame.grid(row=0, column=1, rowspan=2, sticky="nsew")
+        preview_frame.grid(row=0, column=1, sticky="nsew")
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
@@ -311,9 +319,9 @@ class ImageProcessorApp:
     def setup_export_panel(self, parent):
         """Set up the export panel at the bottom."""
         export_frame = ttk.Frame(parent, padding="10")
-        export_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
+        export_frame.grid(row=1, column=0, sticky="ew")
 
-        ttk.Button(export_frame, text="Export as JPEG", command=self.export_jpeg).grid(row=0, column=0, padx=(0, 10))
+        ttk.Button(export_frame, text="Export as PNG", command=self.export_png).grid(row=0, column=0, padx=(0, 10))
         ttk.Button(export_frame, text="Export as TIFF", command=self.export_tiff).grid(row=0, column=1, padx=(0, 10))
         ttk.Button(export_frame, text="Export Both", command=self.export_both).grid(row=0, column=2)
 
@@ -891,32 +899,23 @@ class ImageProcessorApp:
 
         return checker
 
-    def export_jpeg(self):
-        """Export the processed image as JPEG."""
+    def export_png(self):
+        """Export the processed image as PNG."""
         if not self.processed_image:
             messagebox.showwarning("Warning", "No image to export. Please load and process an image first.")
             return
 
         file_path = filedialog.asksaveasfilename(
-            title="Save as JPEG",
-            defaultextension=".jpg",
-            filetypes=[("JPEG files", "*.jpg *.jpeg")],
-            initialfile=self.get_default_filename("jpg")
+            title="Save as PNG",
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png")],
+            initialfile=self.get_default_filename("png")
         )
 
         if file_path:
             try:
-                # Convert to RGB for JPEG (no transparency support)
-                img_to_save = self.processed_image
-                if img_to_save.mode == "RGBA":
-                    # Create white background
-                    background = Image.new("RGB", img_to_save.size, (255, 255, 255))
-                    background.paste(img_to_save, mask=img_to_save.split()[3])
-                    img_to_save = background
-                elif img_to_save.mode != "RGB":
-                    img_to_save = img_to_save.convert("RGB")
-
-                img_to_save.save(file_path, "JPEG", quality=95, dpi=(self.dpi.get(), self.dpi.get()))
+                # PNG supports transparency, so we can save RGBA directly
+                self.processed_image.save(file_path, "PNG", dpi=(self.dpi.get(), self.dpi.get()))
                 messagebox.showinfo("Success", f"Image saved as:\n{file_path}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save image:\n{str(e)}")
@@ -945,7 +944,7 @@ class ImageProcessorApp:
                 messagebox.showerror("Error", f"Failed to save image:\n{str(e)}")
 
     def export_both(self):
-        """Export the processed image as both JPEG and TIFF."""
+        """Export the processed image as both PNG and TIFF."""
         if not self.processed_image:
             messagebox.showwarning("Warning", "No image to export. Please load and process an image first.")
             return
@@ -956,16 +955,9 @@ class ImageProcessorApp:
             try:
                 base_name = self.get_default_filename("")
 
-                # Save JPEG
-                jpg_path = os.path.join(folder, base_name + ".jpg")
-                img_to_save = self.processed_image
-                if img_to_save.mode == "RGBA":
-                    background = Image.new("RGB", img_to_save.size, (255, 255, 255))
-                    background.paste(img_to_save, mask=img_to_save.split()[3])
-                    img_to_save = background
-                elif img_to_save.mode != "RGB":
-                    img_to_save = img_to_save.convert("RGB")
-                img_to_save.save(jpg_path, "JPEG", quality=95, dpi=(self.dpi.get(), self.dpi.get()))
+                # Save PNG
+                png_path = os.path.join(folder, base_name + ".png")
+                self.processed_image.save(png_path, "PNG", dpi=(self.dpi.get(), self.dpi.get()))
 
                 # Save TIFF with compression
                 tiff_path = os.path.join(folder, base_name + ".tiff")
@@ -973,7 +965,7 @@ class ImageProcessorApp:
                                          compression="tiff_lzw",
                                          dpi=(self.dpi.get(), self.dpi.get()))
 
-                messagebox.showinfo("Success", f"Images saved as:\n{jpg_path}\n{tiff_path}")
+                messagebox.showinfo("Success", f"Images saved as:\n{png_path}\n{tiff_path}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save images:\n{str(e)}")
 
