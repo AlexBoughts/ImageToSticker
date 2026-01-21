@@ -1,2 +1,1 @@
 # ImageToSticker
-# ImageToSticker
